@@ -20,6 +20,31 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "references" / "env.json"
 
+PROMPT_COPY = {
+    "en": {
+        "workspace_root": "Workspace root",
+        "global_manager": "Primary global tool manager",
+        "python_manager": "Python manager",
+        "primary_shell": "Primary shell",
+        "environment_notes": "Environment notes",
+        "rules": "Environment rules",
+        "protected_paths": "Protected paths",
+        "protected_files": "Protected files",
+        "list_hint": "comma separated",
+    },
+    "zh": {
+        "workspace_root": "Workspace root / 工作区根目录",
+        "global_manager": "Primary global tool manager / 首选全局工具管理器",
+        "python_manager": "Python manager / Python 管理器",
+        "primary_shell": "Primary shell / 首选 Shell",
+        "environment_notes": "Environment notes / 环境备注",
+        "rules": "Environment rules / 环境规则",
+        "protected_paths": "Protected paths / 禁止修改的目录",
+        "protected_files": "Protected files / 禁止修改的文件",
+        "list_hint": "comma separated / 使用逗号分隔",
+    },
+}
+
 COMMAND_CANDIDATES = {
     "git": [["git", "--version"]],
     "uv": [["uv", "--version"]],
@@ -79,21 +104,39 @@ def run_powershell(command: str) -> str:
     return output if ok else ""
 
 
+def resolve_language(language: str) -> str:
+    if language in {"en", "zh"}:
+        return language
+    preferred = locale.getlocale()[0] or ""
+    return "zh" if preferred.lower().startswith("zh") else "en"
+
+
 def prompt_text(label: str, default: str | None, non_interactive: bool) -> str | None:
     if non_interactive:
         return default
 
     suffix = f" [{default}]" if default else ""
-    raw = input(f"{label}{suffix}: ").strip()
+    try:
+        raw = input(f"{label}{suffix}: ").strip()
+    except EOFError:
+        return default
     return raw or default
 
 
-def prompt_list(label: str, default: list[str], non_interactive: bool) -> list[str]:
+def prompt_list(
+    label: str,
+    default: list[str],
+    non_interactive: bool,
+    list_hint: str,
+) -> list[str]:
     if non_interactive:
         return default
 
-    suffix = ", ".join(default)
-    raw = input(f"{label} (comma separated) [{suffix}]: ").strip()
+    suffix = f" [{', '.join(default)}]" if default else ""
+    try:
+        raw = input(f"{label} ({list_hint}){suffix}: ").strip()
+    except EOFError:
+        return default
     if not raw:
         return default
     return [item.strip() for item in raw.split(",") if item.strip()]
@@ -121,7 +164,8 @@ def detect_tool(name: str, commands: list[list[str]]) -> dict[str, Any]:
         invocation = build_invocation(location, args) if executable == commands[0][0] else command
         ok, output = run_command(invocation)
         if ok and output:
-            detected["version"] = summarize_version(name, output)
+            summarized = summarize_version(name, output)
+            detected["version"] = summarized or None
             break
     return detected
 
@@ -228,6 +272,7 @@ def build_agent_summary(document: dict[str, Any]) -> dict[str, Any]:
     platform_info = document["platform"]
     managers = document["environment_management"]
     python = document["python"]
+    constraints = document["constraints"]
     notes = []
 
     notes.append(
@@ -245,12 +290,19 @@ def build_agent_summary(document: dict[str, Any]) -> dict[str, Any]:
         notes.append(
             f"PATH should prioritize {document['path']['preferred_python_shim']} before WindowsApps."
         )
+    if constraints.get("protected_paths"):
+        notes.append(f"Protected paths: {', '.join(constraints['protected_paths'])}.")
+    if constraints.get("protected_files"):
+        notes.append(f"Protected files: {', '.join(constraints['protected_files'])}.")
+    if constraints.get("rules"):
+        notes.append(f"Extra rules: {'; '.join(constraints['rules'])}.")
 
     return {
         "read_first": "Read this env.json before making machine-level assumptions.",
         "prompt_overview": " ".join(notes),
         "guardrails": [
             "Reuse the recorded managers and toolchain before introducing new global tooling.",
+            "Respect recorded do-not-touch paths, files, and local environment rules.",
             "Probe the live system only when the request needs fresh verification or a machine-level change.",
             "Refresh env.json after environment changes so later agents avoid rediscovery work.",
         ],
@@ -258,32 +310,58 @@ def build_agent_summary(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def merge_user_hints(args: argparse.Namespace, defaults: dict[str, Any]) -> dict[str, Any]:
+    language = resolve_language(args.language)
+    copy = PROMPT_COPY[language]
+
     workspace_root = args.workspace_root or prompt_text(
-        "Workspace root", defaults.get("workspace_root"), args.non_interactive
+        copy["workspace_root"], defaults.get("workspace_root"), args.non_interactive
     )
     global_manager = args.global_manager or prompt_text(
-        "Primary global tool manager",
+        copy["global_manager"],
         defaults.get("primary_global_manager"),
         args.non_interactive,
     )
     python_manager = args.python_manager or prompt_text(
-        "Python manager", defaults.get("python_manager"), args.non_interactive
+        copy["python_manager"], defaults.get("python_manager"), args.non_interactive
     )
     shell_name = args.primary_shell or prompt_text(
-        "Primary shell", defaults.get("primary_shell"), args.non_interactive
+        copy["primary_shell"], defaults.get("primary_shell"), args.non_interactive
     )
     notes = args.note or prompt_list(
-        "Environment notes",
+        copy["environment_notes"],
         defaults.get("notes", []),
         args.non_interactive,
+        copy["list_hint"],
+    )
+    rules = args.rule or prompt_list(
+        copy["rules"],
+        defaults.get("rules", []),
+        args.non_interactive,
+        copy["list_hint"],
+    )
+    protected_paths = args.protected_path or prompt_list(
+        copy["protected_paths"],
+        defaults.get("protected_paths", []),
+        args.non_interactive,
+        copy["list_hint"],
+    )
+    protected_files = args.protected_file or prompt_list(
+        copy["protected_files"],
+        defaults.get("protected_files", []),
+        args.non_interactive,
+        copy["list_hint"],
     )
 
     return {
+        "language": language,
         "workspace_root": workspace_root,
         "primary_global_manager": global_manager,
         "python_manager": python_manager,
         "primary_shell": shell_name,
         "notes": notes,
+        "rules": rules,
+        "protected_paths": protected_paths,
+        "protected_files": protected_files,
     }
 
 
@@ -295,6 +373,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--python-manager")
     parser.add_argument("--primary-shell")
     parser.add_argument("--note", action="append", default=[])
+    parser.add_argument("--rule", action="append", default=[])
+    parser.add_argument("--protected-path", action="append", default=[])
+    parser.add_argument("--protected-file", action="append", default=[])
+    parser.add_argument("--language", choices=["auto", "en", "zh"], default="auto")
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--render-md", action="store_true")
     return parser.parse_args()
@@ -313,12 +395,17 @@ def main() -> int:
             "python_manager": manager_defaults["python_manager"],
             "primary_shell": get_shell_name(),
             "notes": [],
+            "rules": [],
+            "protected_paths": [],
+            "protected_files": [],
         },
     )
 
     default_python = None
     if tool_info["detected"]["python"]["version"]:
         default_python = extract_python_version(tool_info["detected"]["python"]["version"])
+    if default_python is None:
+        default_python = platform.python_version()
 
     document = {
         "schema_version": 2,
@@ -335,6 +422,11 @@ def main() -> int:
             "primary_global_manager": user_hints["primary_global_manager"],
             "notes": user_hints["notes"],
         },
+        "constraints": {
+            "rules": user_hints["rules"],
+            "protected_paths": user_hints["protected_paths"],
+            "protected_files": user_hints["protected_files"],
+        },
         "python": {
             "manager": user_hints["python_manager"],
             "installed_versions": tool_info["python_versions"],
@@ -345,8 +437,12 @@ def main() -> int:
         "docker_desktop": collect_docker_info(),
         "tooling": tool_info["detected"],
         "user_hints": {
+            "language": user_hints["language"],
             "workspace_root": user_hints["workspace_root"],
             "notes": user_hints["notes"],
+            "rules": user_hints["rules"],
+            "protected_paths": user_hints["protected_paths"],
+            "protected_files": user_hints["protected_files"],
         },
     }
     document["agent_summary"] = build_agent_summary(document)

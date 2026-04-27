@@ -1,0 +1,7 @@
+interface:
+  display_name: "Local Environment Manager"
+  short_description: "Collect env facts, generate env.json, and render a human-readable local environment summary."
+  default_prompt: "Use $local-environment-query to collect or read this machine's environment snapshot before making system-level assumptions."
+
+policy:
+  allow_implicit_invocation: true

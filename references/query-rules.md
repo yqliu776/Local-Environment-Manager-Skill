@@ -2,7 +2,7 @@
 
 ## Source Order
 - Read `env.json` first.
-- Read `environment.md` only when a human-readable explanation is needed.
+- Read `environment.zh-CN.md` or `environment.en.md` only when a human-readable explanation is needed.
 - Run `scripts/collect_env.py` when the snapshot must be refreshed.
 - Query the live system ad hoc only when one targeted verification is cheaper than regenerating the snapshot.
 
@@ -15,10 +15,15 @@
 ## Collection Policy
 - Use the project-local `uv` environment for this skill's scripts.
 - Run `uv sync` before the first scripted operation or after dependency changes.
+- Pass `--language en` for English-speaking users.
+- Pass `--language zh` for Chinese-speaking users so the interactive prompts stay bilingual.
+- Pass `--public` when generating artifacts that may be committed to a public repository.
 - Prefer passing user hints into `collect_env.py` rather than hardcoding assumptions in `env.json`.
+- If the user explicitly says they have several environment facts or local rules to provide, convert them into script flags instead of leaving them only in the conversation.
+- Use `--rule`, `--protected-path`, and `--protected-file` for do-not-touch constraints whenever the user provides them.
 - Record stable conventions in `environment_management.notes`.
 - Keep `agent_summary.prompt_overview` concise enough to paste into future agent prompts.
-- Regenerate `environment.md` from `env.json` instead of editing it manually.
+- Regenerate `environment.zh-CN.md` and `environment.en.md` from `env.json` instead of editing them manually.
 
 ## Response Style
 - Return the recorded fact before doing extra probing.

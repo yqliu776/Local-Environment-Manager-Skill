@@ -1,0 +1,11 @@
+[project]
+name = "local-environment-query"
+version = "0.1.0"
+description = "Skill project for collecting and summarizing local development environment facts."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "PyYAML>=6.0,<7.0",
+]
+
+[tool.uv]
+package = false

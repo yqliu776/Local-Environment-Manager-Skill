@@ -15,9 +15,13 @@ Read `references/query-rules.md` only when you need the exact refresh and verifi
 
 Use the bundled scripts instead of manually rebuilding the files:
 
-- Run `python3.12 scripts/collect_env.py --render-md` to collect environment facts and refresh both generated files.
+- Create or refresh the project virtual environment with `uv sync`.
+- Run `uv run scripts/collect_env.py --render-md` to collect environment facts and refresh both generated files.
+- Run `uv run scripts/validate_skill.py` after editing the skill files.
 - Pass `--non-interactive` when you want pure auto-detection with defaults.
 - Pass `--workspace-root`, `--global-manager`, `--python-manager`, `--primary-shell`, and repeated `--note` flags when the user has already supplied those hints.
+
+Use the project virtual environment for all skill-local operations. Do not call the scripts with a global Python interpreter unless the environment is broken and you are repairing it.
 
 Treat the collection workflow as two layers:
 

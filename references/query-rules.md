@@ -13,6 +13,8 @@
 - The current request depends on tools or policies not present in the snapshot.
 
 ## Collection Policy
+- Use the project-local `uv` environment for this skill's scripts.
+- Run `uv sync` before the first scripted operation or after dependency changes.
 - Prefer passing user hints into `collect_env.py` rather than hardcoding assumptions in `env.json`.
 - Record stable conventions in `environment_management.notes`.
 - Keep `agent_summary.prompt_overview` concise enough to paste into future agent prompts.
